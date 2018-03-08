@@ -1,0 +1,153 @@
+---
+title: "Impact of Severe Weather on Human and Economic Health in the United States"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+## Synopsis
+
+This research aims to identify the impact of severe weather on human and economic heath in the United States.The research uses data provided by the National Oceanic and Atmospheric Administration???s (NOAA), covering the years 1950-2011 and reports the number of death and damage to property and crops. The data analysis shows that tornados are the most dangerous for human heath and floods are the most dangerous for poperty.
+
+
+
+
+
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+##  Data Processing
+
+Useful libraries were loaded and data was read from local directory (it will take some time) and glaced at the variables reported. 
+The relevant variables for the analysis are:
+- EVTYPE
+- FATALITIES
+- INJURIES
+- PROPDMG
+- PROPDMGEXP
+- CROPDMG
+- CROPDMGEXP
+
+
+
+```{r}
+
+
+#library(tinytext)
+library(plyr)
+library(ggplot2)
+library(dplyr)
+
+
+
+stormdata<- read.csv("/Users/iMac/datasciencecoursera/repdata_data_StormData.csv")
+
+storm<-stormdata[c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+
+str(storm)
+head(storm)
+summary(storm)
+
+```
+
+Property Damage (PROPDMG) and Crop Damage (CROPDMG) must be converted to numeric variables and converted to comparable scales.
+
+
+```{r}
+storm$PROPDMGEXP<- mapvalues(storm$PROPDMGEXP, from = c("K", "M","", "B", "m", "+", "0", "5", "6", "?", "4", "2", "3", "h", "7", "H", "-", "1", "8"), to = c(10^3, 10^6, 1, 10^9, 10^6, 0,1,10^5, 10^6, 0, 10^4, 10^2, 10^3, 10^2, 10^7, 10^2, 0, 10, 10^8))
+
+storm$PROPDMGEXP<- as.numeric(as.character(storm$PROPDMGEXP))
+
+storm$PROPDMGTOTAL<- (storm$PROPDMG * storm$PROPDMGEXP)/1000000000
+
+storm$CROPDMGEXP<- mapvalues(storm$CROPDMGEXP, from = c("","M", "K", "m", "B", "?", "0", "k","2"), to = c(1,10^6, 10^3, 10^6, 10^9, 0, 1, 10^3, 10^2))
+
+storm$CROPDMGEXP<- as.numeric(as.character(storm$CROPDMGEXP))
+
+storm$CROPDMGTOTAL<- (storm$CROPDMG * storm$CROPDMGEXP)/1000000000
+
+storm$DAMAGETOTAL<- storm$PROPDMGTOTAL + storm$CROPDMGEXP
+
+detach(package:plyr)
+
+```
+
+Grouping and ploting related data to understand fatalities by cause.
+
+```{r}
+
+
+
+
+storm_type<- storm %>%
+  mutate(evtypegrp = ifelse(grepl("LIGHTNING|LIGNTNING", EVTYPE), "LIGHTNING", ifelse(grepl("HAIL", EVTYPE), "HAIL", ifelse(grepl("RAIN|FLOOD|WET|FLD", EVTYPE), "RAIN", ifelse(grepl("SNOW|WINTER|WINTRY|BLIZZARD|SLEET|COLD|ICE|FREEZE|AVALANCHE|ICY", EVTYPE), "WINTER",
+ifelse(grepl("TORNADO|FUNNEL", EVTYPE), "TORNADO",
+ifelse(grepl("WIND|HURRICANE", EVTYPE), "WINDS",
+ifelse(grepl("STORM|THUNDER|TSTM|TROPICAL +STORM", EVTYPE), "STORM",
+ifelse(grepl("FIRE", EVTYPE), "FIRE",
+ifelse(grepl("FOG|VISIBILITY|DARK|DUST", EVTYPE), "FOG",
+ifelse(grepl("WAVE|SURF|SURGE|TIDE|TSUNAMI|CURRENT|SWELL", EVTYPE), "WAVE",
+ifelse(grepl("HEAT|HIGH +TEMP|RECORD +TEMP|WARM|DRY", EVTYPE), "HEAT",
+ifelse(grepl("VOLCAN", EVTYPE), "VOLCANO",
+ifelse(grepl("DROUGHT", EVTYPE), "DROUGHT","OTHER"))))))))))))))
+
+```
+
+
+Plotting fatalities
+
+```{r}
+event_sum<- storm_type %>% group_by(evtypegrp) %>% summarise(damage = sum(DAMAGETOTAL), property= sum(PROPDMGTOTAL), crops = sum(CROPDMGTOTAL), fatalities = sum(FATALITIES), injuries = sum(INJURIES))
+```
+
+```{r}
+fatalities<-head(event_sum[order(event_sum$fatalities, decreasing=TRUE),],10)
+
+
+ggplot(fatalities, aes(evtypegrp,fatalities, fill=fatalities)) + geom_bar(stat = "identity") + labs(x= "Cause", y = "N. Fatalities") +
+  ggtitle("Fatalities By Cause")+
+  theme_classic() +
+  expand_limits(y=c(0,8000))
+
+```
+
+```{r}
+
+injuries<- head(event_sum[order(event_sum$injuries, decreasing = TRUE),], 10)
+
+ggplot(injuries, aes(evtypegrp, injuries, fill=injuries)) + geom_bar(stat = "identity") + labs(x = "Cause", y = "N. Injuries") + ggtitle("Injuries by Causee")+ theme_classic() + expand_limits(y=c(0, 8000))
+```
+
+
+
+
+
+
+```{r}
+damage <-head(event_sum[order(event_sum$damage, decreasing=TRUE),],10)
+property <- damage %>% mutate(damage_type="Property", damage_amount=property)
+crops <- damage %>% mutate(damage_type="Crops", damage_amount=crops)
+damage_major <- rbind(property,crops)
+
+ggplot(damage_major, aes(evtypegrp, damage_amount, fill=factor(damage_type))) +
+  geom_bar(stat = "identity") + 
+  ylab("Damage {$}") +
+  xlab("Event Type") +
+  scale_fill_discrete(name = "Damage") +
+  ggtitle ("Economical Damage by Cause") +
+  theme_classic()
+```
+
+
+
+
+
+
+## Results
+
+
+It appears that the cause for human injuries and fatalities is  related to tornados, while damage to property  is in great part caused by rain. Crop damage is caused by rain, wind and sever winters.
